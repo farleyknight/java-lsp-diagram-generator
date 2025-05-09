@@ -6,15 +6,18 @@ This document outlines the steps required to set up the development environment 
 
 Before you begin, ensure you have the following installed:
 
-*   **Node.js:** (Specify version, e.g., v18.x or later) - Required for running the backend and frontend.
-*   **npm/yarn:** (Specify version if necessary) - For managing Node.js packages.
-*   **Java Development Kit (JDK):** (Specify version, e.g., JDK 11 or later) - Required for the Java LSP server and the `java-ast` tool.
+*   **Node.js:** v18.0.0 or later (as per `package.json` `engines` field). A specific Long-Term Support (LTS) version (e.g., v20.x.x) is recommended for stability. Please specify the version you are using here: `v23.11.0`
+*   **npm/yarn:** (Specify version if necessary, usually comes with Node.js)
+*   **Java Development Kit (JDK):** JDK 11 or later (e.g., JDK 17, 21). Ensure it is compatible with the Java projects you intend to analyze. Please specify the version you are using for projects here: `JDK 17`
 *   **`java-ast` tool:**
-    *   Download the JAR file from [https://github.com/pascalgn/java-ast/releases](https://github.com/pascalgn/java-ast/releases) (Specify recommended version).
-    *   Alternatively, provide instructions if it needs to be built from source.
+    *   Download a specific JAR file version from [https://github.com/pascalgn/java-ast/releases](https://github.com/pascalgn/java-ast/releases) (e.g., v1.10.0). Document the chosen version here: `v0.4.0`.
+    *   The `JAVA_AST_JAR_PATH` in your `.env` file must point to this downloaded JAR.
 *   **Java LSP Server:**
-    *   Specify which Java LSP server is being used (e.g., Eclipse JDT LS).
-    *   Provide download/setup instructions or link to its official documentation. (e.g., "Download from [link] or ensure it's included as a dependency if bundled").
+    *   **Server Used:** Eclipse JDT LS ([https://github.com/eclipse-jdtls/eclipse.jdt.ls](https://github.com/eclipse-jdtls/eclipse.jdt.ls))
+    *   **Installation:** The `scripts/install-lsp.sh` script downloads the latest available snapshot of Eclipse JDT LS. This means the exact version can vary if the script is re-run later. The downloaded server files are placed in the `bin/eclipse.jdt.ls` directory.
+    *   **Runtime JDK for JDT LS:** Requires Java 21 or later to run the LSP server itself. Ensure this is installed and accessible.
+    *   **Project JDK Compatibility:** Eclipse JDT LS can analyze projects using JDK versions from 1.8 through 24. The JDK version specified above for your projects should be compatible.
+    *   **Manual Download/Setup (Alternative to script):** Milestone builds can be downloaded from [http://download.eclipse.org/jdtls/milestones/](http://download.eclipse.org/jdtls/milestones/). These are typically packaged as archives (e.g., `jdt-language-server-<version>.tar.gz` or `.zip`). If setting up manually, extract the archive and configure the `LSP_SERVER_JAR_PATH` in your `.env` file to point to the `plugins/org.eclipse.equinox.launcher_<VERSION>.jar` within the extracted directory.
 
 ## Configuration
 

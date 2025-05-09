@@ -49,8 +49,8 @@ This section will include commands for common development and build tasks.
 **Testing:**
 -   `"test"`: `"jest"` (or `vitest`)
 -   `"test:watch"`: `"jest --watch"`
--   `"test:e2e"`: `"cypress run"` (or `playwright test`)
--   `"test:e2e:open"`: `"cypress open"` (or `playwright test --ui`)
+-   `"test:e2e"`: `"playwright test"`
+-   `"test:e2e:open"`: `"playwright test --ui"`
 
 *(Note: If not using a monorepo manager, scripts like `client:serve` might be `cd client && npm run serve` from the root, or these would live in `client/package.json`)*
 
@@ -94,12 +94,13 @@ These packages are needed for development, testing, and building the application
 -   `typescript`: "^LATEST_VERSION" - TypeScript compiler.
 -   `vite`: "^LATEST_VERSION" - Alternative build tool for Vue.js (if not Vue CLI).
 -   `vitest`: "^LATEST_VERSION" - Test runner for Vite projects (if using Vite).
+-   `playwright`: "^LATEST_VERSION" - E2E testing framework.
 
 *(LATEST_VERSION should be replaced with actual current stable versions at the time of creation)*
 
 ## Next Steps
 1.  Decide on the project structure (single `package.json` vs. monorepo/multiple `package.json` files).
-2.  Choose specific tooling where alternatives exist (e.g., Vue CLI vs. Vite, Jest vs. Vitest, Cypress vs. Playwright).
+2.  Choose specific tooling where alternatives exist (e.g., Vue CLI vs. Vite, Jest vs. Vitest, Playwright).
 3.  Initialize the `package.json` (`npm init -y` or similar).
 4.  Install the listed dependencies and devDependencies with their current stable versions.
 5.  Configure `tsconfig.json`, ESLint, Prettier, and testing frameworks. 

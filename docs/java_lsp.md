@@ -4,11 +4,45 @@ This document outlines the implementation details for launching and interacting 
 
 ## Launching the Java LSP Server
 
-1.  **Prerequisites**: Ensure a Java Development Kit (JDK) and the Java LSP server (e.g., Eclipse JDT LS) are installed.
-2.  **Server Distribution**: The LSP server is typically distributed as a JAR file or a collection of JARs.
-3.  **Command**: The server is launched as a standard Java application. The exact command will depend on the specific LSP server implementation. It usually involves running `java -jar <path_to_lsp_server_jar> [options]`.
-    *   Options might include paths to project-specific configuration, workspace directories, or enabling specific features.
-4.  **Communication Channels**: The LSP server will communicate over standard input/output (stdin/stdout) by default. It can also be configured to listen on a specific TCP port or use named pipes for communication. For our Node.js application, using stdin/stdout is often the most straightforward approach when launching the LSP as a child process.
+1.  **Prerequisites**:
+    *   Ensure a Java Development Kit (JDK) **version 21 or higher** is installed and accessible (e.g., via `JAVA_HOME` or on the system `PATH`). ([Source](https://github.com/eclipse-jdtls/eclipse.jdt.ls) - Requirements)
+    *   Download the Java LSP server (Eclipse JDT LS). 
+        *   The provided `scripts/install-lsp.sh` script automates this by downloading the latest snapshot from `http://download.eclipse.org/jdtls/snapshots/` and extracting it to `bin/eclipse.jdt.ls/`.
+        *   Alternatively, manual download options include:
+            *   Milestone builds: `http://download.eclipse.org/jdtls/milestones/`
+            *   Snapshot builds: `http://download.eclipse.org/jdtls/snapshots/`
+        *   If downloading manually, extract the downloaded archive into a known location (e.g., `bin/eclipse.jdt.ls/` in our project, which is the default for the install script).
+        ([Source](https://github.com/eclipse-jdtls/eclipse.jdt.ls) - Installation)
+
+2.  **Server Distribution**: The LSP server is distributed as an archive containing multiple JARs and configuration files. The key JAR for launching is typically `org.eclipse.equinox.launcher_VERSION.jar` located in a `plugins` subdirectory of the extracted server.
+
+3.  **Command Structure**: The server is launched as a standard Java application. The command structure, based on the `eclipse.jdt.ls` documentation, is as follows:
+
+    ```bash
+    java \
+        -Declipse.application=org.eclipse.jdt.ls.core.id1 \
+        -Dosgi.bundles.defaultStartLevel=4 \
+        -Declipse.product=org.eclipse.jdt.ls.core.product \
+        -Dlog.level=ALL \
+        -Xmx1G \
+        --add-modules=ALL-SYSTEM \
+        --add-opens java.base/java.util=ALL-UNNAMED \
+        --add-opens java.base/java.lang=ALL-UNNAMED \
+        -jar <path_to_extracted_server>/plugins/org.eclipse.equinox.launcher_VERSION.jar \
+        -configuration <path_to_extracted_server>/config_OS \
+        -data <absolute_path_to_project_workspace_data>
+    ```
+    ([Source](https://github.com/eclipse-jdtls/eclipse.jdt.ls) - Running from the command line)
+
+    *   **`<path_to_extracted_server>`**: The directory where you extracted the downloaded LSP server.
+    *   **`org.eclipse.equinox.launcher_VERSION.jar`**: Replace `VERSION` with the actual version of the launcher JAR found in the `plugins` directory.
+    *   **`-configuration <path_to_extracted_server>/config_OS`**: Specifies the platform-specific configuration directory. Replace `config_OS` with:
+        *   `config_linux` for Linux
+        *   `config_win` for Windows
+        *   `config_mac` for macOS
+    *   **`-data <absolute_path_to_project_workspace_data>`**: This is a crucial parameter. It must be an **absolute path** to a writable directory where `eclipse.jdt.ls` will store metadata, index files, and other information specific to the Java project being analyzed. This directory should be unique for each Java project. For example, if analyzing `/Users/me/myJavaProject`, the `-data` path could be `/Users/me/myJavaProject/.jdt_ws_data` or similar.
+
+4.  **Communication Channels**: The LSP server will communicate over standard input/output (stdin/stdout) by default when launched with the command above. This is suitable for our Node.js application to launch the LSP as a child process. ([Source](https://github.com/eclipse-jdtls/eclipse.jdt.ls) - Managing connection types)
 
 ## Interacting via JSON-RPC
 
@@ -59,10 +93,19 @@ For determining call hierarchies, the following LSP requests will be crucial:
 *   **`initialized`**: A notification sent from the client to the server after the `initialize` request has been processed.
 *   **`textDocument/didOpen`**: Notifies the server that a document has been opened by the client. The server will then start analyzing it.
 *   **`textDocument/definition`**: Asks the server to go to the definition of a symbol at a given text document position. This can be used to find the declaration of a method.
-*   **`textDocument/references`**: Finds all references to a symbol at a given text document position. This is essential for finding where a method is called.
+*   **`textDocument/references`**: Finds all references to a symbol at a given text document position. This is essential for finding where a method is called (i.e., incoming calls).
 *   **`callHierarchy/prepare`** (if supported by the Java LSP): Prepares a call hierarchy for a symbol at a given text document position. This is a more direct way to start building a call hierarchy.
 *   **`callHierarchy/incomingCalls`** (if supported): Resolves incoming calls for a call hierarchy item.
 *   **`callHierarchy/outgoingCalls`** (if supported): Resolves outgoing calls for a call hierarchy item.
+
+**Important Note on JDT LS Call Hierarchy Support (as of v1.47 / April 2025 snapshot):**
+Initial integration testing revealed that while the JDT LS server advertises `callHierarchyProvider: true` in its capabilities during initialization, it subsequently returns an error (`Unsupported request method`, code `-32601`) when the `callHierarchy/prepare` request is actually sent. 
+
+Therefore, relying solely on the `callHierarchy/*` methods may not be feasible with this JDT LS version. 
+
+The current implementation strategy involves:
+1.  Using `textDocument/references` with `includeDeclaration: true` to find incoming calls (and the definition itself).
+2.  Building outgoing call information may require a different approach, potentially combining `textDocument/definition` on symbols within a method body with AST parsing (using `java-ast`) to identify method call expressions accurately.
 
 If the direct `callHierarchy/*` requests are not fully supported or do not provide enough control, a combination of `textDocument/definition` and `textDocument/references`, along with AST parsing via `java-ast` for context, will be needed to recursively build the call tree.
 
@@ -150,7 +193,7 @@ For the Node.js TypeScript implementation of the Java LSP client, we anticipate 
         *   `workspaceRoot?: string` // To be dynamically set or configured
         *   `initializationOptions?: any`
     *   **Object: `defaultLspConfig: JavaLspConfig`** (example default values)
-*   **`src/services/call_hierarchy_service.ts`**: This higher-level service will utilize `lsp_client.ts` to perform the sequence of LSP calls needed to build a call hierarchy for a given method. It will manage the state of the recursive search and aggregate the results.
+*   **`src/services/call_hierarchy_service.ts`**: This higher-level service will utilize `lsp_client.ts` to perform the sequence of LSP calls needed to build a call hierarchy for a given method. It will manage the state of the recursive search and aggregate the results. Given the limitations with JDT LS's `callHierarchy/prepare` (as noted earlier), this service will also be responsible for invoking an AST parsing service (like `AstParserService` from the `java-ast` integration) to parse method bodies and refine outgoing call information, particularly by analyzing control flow.
     *   **Class: `CallHierarchyService`**
         *   **Properties:**
             *   `lspClient: LspClient`

@@ -1,0 +1,22 @@
+node_modules
+bin/*
+*.prefs
+*.log
+*.version
+*.index
+.env
+
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+lcov.info
+
+# PID files
+.lsp.pid
+
+# Dependency directories
+tests/fixtures/.jdt_ws*
+tests/fixtures/SampleJavaProject/.jdt_ws*

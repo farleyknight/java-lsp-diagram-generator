@@ -12,37 +12,46 @@ This document tracks tasks, challenges, and considerations for the Java LSP Diag
 
 ---
 
+## Phase 0: Top Priority
+
+- [x] **LSP Interaction - E2E Tests for REST Annotation Discovery:** Implement E2E tests that start the Java LSP server once, query for REST annotations in the test fixture project, report findings, verify results, and then shut down the server. Ensure test fixtures are adequate. ([Details](./java_lsp.md#8-end-to-end-e2e-tests-optional-but-recommended))
+    - Status: Tested
+    - Details: Focus on demonstrating live querying of REST annotations and efficient test execution within a single LSP server lifecycle. (Implemented using semantic tokens due to limitations with documentSymbol)
+
+---
+
 ## Phase 1: Foundational Setup & Core Definitions
 
 ### 1.1. Project Setup & Initial Documentation
-- [ ] **Deployment - Create `package.json`:** Define project dependencies and scripts. ([Details](./package_json_details.md))
-    - Status: TODO
+- [x] **Deployment - Create `package.json`:** Define project dependencies and scripts. ([Details](./package_json_details.md))
+    - Status: Code complete
     - Details: Document outlines key dependencies, devDependencies, and scripts.
-- [ ] **Deployment - Specify Node.js version:** Define the specific Node.js version requirement. ([Details](./deployment_and_setup.md#prerequisites))
-    - Status: TODO
+- [x] **Deployment - Specify Node.js version:** Define the specific Node.js version requirement. ([Details](./deployment_and_setup.md#prerequisites))
+    - Status: Done
     - Details:
-- [ ] **Deployment - Specify JDK version:** Define the specific JDK version requirement. ([Details](./deployment_and_setup.md#prerequisites))
-    - Status: TODO
+- [x] **Deployment - Specify JDK version:** Define the specific JDK version requirement. ([Details](./deployment_and_setup.md#prerequisites))
+    - Status: Done
     - Details:
 - [ ] **Deployment - Specify LSP Server setup:** Provide clear instructions for obtaining and setting up the Java LSP server. ([Details](./deployment_and_setup.md#prerequisites))
-    - Status: TODO
+    - Status: Code complete
+    - Tests: TODO
+    - Details: Investigation complete. Install script (`scripts/install-lsp.sh`) and launch script (`src/scripts/launch-lsp.ts`) created. Requires JDK 21+. Final documentation in `deployment_and_setup.md` pending.
+- [x] **Deployment - Create `.env.example`:** Create or update the `.env.example` file. ([Details](./deployment_and_setup.md#configuration))
+    - Status: Done
     - Details:
-- [ ] **Deployment - Create `.env.example`:** Create or update the `.env.example` file. ([Details](./deployment_and_setup.md#configuration))
-    - Status: TODO
-    - Details:
-- [ ] **Project Overview - Update Tool Versions:** Ensure specific tool versions (Eclipse JDT LS, `java-ast`) are documented. ([Details](./project_overview.md#tools))
-    - Status: TODO
-    - Details: Check `deployment_and_setup.md` for consistency.
+- [x] **Project Overview - Update Tool Versions:** Ensure specific tool versions (Eclipse JDT LS, `java-ast`) are documented. ([Details](./project_overview.md#tools))
+    - Status: Done
+    - Details: Check `deployment_and_setup.md` for consistency. Placeholders for specific versions (Node, Project JDK, `java-ast`) have been added to `deployment_and_setup.md`. JDT LS versioning (latest snapshot via script) is now clarified in both `project_overview.md` and `deployment_and_setup.md`.
 
 ### 1.2. Core Data Model
-- [ ] **Data Model - Define Core Structures:** Ensure all data structures (`DiscoveredEndpoint`, `CallHierarchyGraph`, etc.) are well-defined and consistently used. ([Details](./data_model.md#core-data-structures))
-    - Status: Review Needed
-    - Details: Core structures are largely defined in `data_model.md`. Review for consistency. 
+- [x] **Data Model - Define Core Structures:** Ensure all data structures (`DiscoveredEndpoint`, `CallHierarchyGraph`, etc.) are well-defined and consistently used. ([Details](./data_model.md#core-data-structures))
+    - Status: Done
+    - Details: Core structures in `data_model.md` reviewed for consistency against `java_ast_integration.md`, `llm_interaction.md`, `project_overview.md`, `java_lsp.md`, `core_orchestration.md`, `web_ui_interaction.md`, and `mermaid_diagram_management.md`. Recommendations for minor adjustments in planned TypeScript type definitions (primarily in `llm_types.ts` and `java_ast_types.ts`) and some documentation clarifications have been noted to ensure full alignment with `data_model.md`. `EndpointDetails` is deemed comprehensive. LSP type usage and `CallHierarchyNodeLSP` are confirmed consistent.
     - Sub-Tasks:
-        - [ ] Ensure `DiscoveredEndpoint`, `CallHierarchyGraph`, `MethodNode`, `CallHierarchyEdge`, `ControlFlowInfo`, `DisambiguationChoice`, `DisambiguationResult`, `MermaidDiagram`, and `EndpointDetails` are consistently defined and used across all relevant documents and planned code modules.
-        - [ ] Verify `EndpointDetails` structure is comprehensive for its purpose (LLM diagram generation context).
-        - [ ] Confirm that the note in `data_model.md` regarding the use of standard LSP types (e.g., from `vscode-languageserver-protocol`) for detailed LSP messages is adequate and that `CallHierarchyNodeLSP` correctly represents `CallHierarchyItem`.
-- [ ] **Data Model - `Range` and `Position` types:** Use standard LSP types for `Range` and `Position`. ([Details](./data_model.md#notes))
+        - [x] Ensure `DiscoveredEndpoint`, `CallHierarchyGraph`, `MethodNode`, `CallHierarchyEdge`, `ControlFlowInfo`, `DisambiguationChoice`, `DisambiguationResult`, `MermaidDiagram`, and `EndpointDetails` are consistently defined and used across all relevant documents and planned code modules.
+        - [x] Verify `EndpointDetails` structure is comprehensive for its purpose (LLM diagram generation context).
+        - [x] Confirm that the note in `data_model.md` regarding the use of standard LSP types (e.g., from `vscode-languageserver-protocol`) for detailed LSP messages is adequate and that `CallHierarchyNodeLSP` correctly represents `CallHierarchyItem`.
+- [x] **Data Model - `Range` and `Position` types:** Use standard LSP types for `Range` and `Position`. ([Details](./data_model.md#notes))
     - Status: Done
     - Details: `data_model.md` confirms these will be standard LSP types, and further clarifies that other LSP types will also be standard/from libraries.
 
@@ -52,37 +61,42 @@ This document tracks tasks, challenges, and considerations for the Java LSP Diag
 
 ### 2.1. Java LSP Interaction
 - [ ] **LSP Interaction - Define LSP Types:** Create TypeScript interfaces for LSP message structures. ([Details](./java_lsp.md#srclsptypests))
-    - Status: TODO
-    - Details: Consider using `vscode-languageserver-protocol` types.
-- [ ] **LSP Interaction - Implement `json_rpc_protocol.ts`:** Create utility functions for formatting and parsing JSON-RPC messages. ([Details](./java_lsp.md#srclspjson_rpc_protocolts))
-    - Status: TODO
+    - Status: Code complete
+    - Details: Basic types defined in `src/lsp/types.ts`. Further refinement or use of `vscode-languageserver-protocol` might be needed.
+- [x] **LSP Interaction - Implement `json_rpc_protocol.ts`:** Create utility functions for formatting and parsing JSON-RPC messages. ([Details](./java_lsp.md#srclspjson_rpc_protocolts))
+    - Status: Tested
+    - Tests: src/lsp/json_rpc_protocol.test.ts
     - Details:
 - [ ] **LSP Interaction - Implement `LspClient`:** Develop the `LspClient` class to abstract LSP requests and notifications. ([Details](./java_lsp.md#srclsplsp_clientts))
-    - Status: TODO
+    - Status: Code complete
+    - Tests: TODO
     - Details:
 - [ ] **LSP Interaction - Implement `LspManager`:** Develop the `LspManager` class for managing the LSP server lifecycle and communication. ([Details](./java_lsp.md#srclsplsp_managerts))
-    - Status: TODO
-    - Details:
+    - Status: Code complete
+    - Tests: TODO
+    - Details: Basic lifecycle and communication implemented. Integration tested.
 - [ ] **LSP Interaction - Implement `CallHierarchyService`:** Develop the service to build the call hierarchy using `LspClient`. ([Details](./java_lsp.md#srcservicescall_hierarchy_servicets))
-    - Status: TODO
-    - Details: Includes logic for filtering and managing recursion depth.
-- [ ] **LSP Interaction - Test `json_rpc_protocol.ts`:** Write unit tests for JSON-RPC utilities. ([Details](./java_lsp.md#2-srclspjson_rpc_protocolts))
-    - Status: TODO
-    - Details:
-- [ ] **LSP Interaction - Test `LspClient`:** Write unit tests for `LspClient`. ([Details](./java_lsp.md#3-srclsplsp_clientts-lspclient))
-    - Status: TODO
+    - Status: Code complete
+    - Tests: TODO
+    - Details: Initial version created. Requires refinement as `callHierarchy/prepare` is unsupported by tested JDT LS version. Needs fallback to `textDocument/references` and potentially AST parsing.
+- [x] **LSP Interaction - Test `json_rpc_protocol.ts`:** Write unit tests for JSON-RPC utilities. ([Details](./java_lsp.md#2-srclspjson_rpc_protocolts))
+    - Status: Code complete
+    - Details: Unit test file `src/lsp/json_rpc_protocol.test.ts` created with test cases based on `java_lsp.md` documentation.
+- [x] **LSP Interaction - Test `LspClient`:** Write unit tests for `LspClient`. ([Details](./java_lsp.md#3-srclsplsp_clientts-lspclient))
+    - Status: Done
+    - Tests: tests/lsp/lsp_client.test.ts
     - Details:
 - [ ] **LSP Interaction - Test `LspManager`:** Write unit tests for `LspManager`. ([Details](./java_lsp.md#1-srclsplsp_managerts-lspmanager))
     - Status: TODO
-    - Details:
+    - Details: (Integration test exists, but unit tests still needed).
 - [ ] **LSP Interaction - Test `CallHierarchyService`:** Write unit tests for `CallHierarchyService`. ([Details](./java_lsp.md#6-srcservicescall_hierarchy_servicets-callhierarchyservice))
     - Status: TODO
     - Details:
 
 ### 2.2. `java-ast` Integration & Analysis
 - [ ] **`java-ast` - Define AST Types:** Create TypeScript interfaces for the `java-ast` JSON output structure (or for an abstraction layer over the library's types). ([Details](./java_ast_integration.md#srcjava-astjava_ast_typests))
-    - Status: TODO
-    - Details:
+    - Status: Code complete
+    - Details: Preliminary TypeScript interfaces created in src/java-ast/java_ast_types.ts. These are based on common ANTLR conventions and require verification against the actual output of the java-ast library (v0.4.0).
 - [ ] **`java-ast` - Implement `JavaAstRunner`:** Develop the class for executing the `java-ast` tool. ([Details](./java_ast_integration.md#srcjava-astjava_ast_runnerts))
     - Status: TODO
     - Details:
@@ -333,7 +347,7 @@ This document tracks tasks, challenges, and considerations for the Java LSP Diag
     - Details:
 
 ### 8.9. Advanced Testing
-- [ ] **Web UI - E2E Tests:** Develop E2E tests for key user flows. ([Details](./web_ui_interaction.md#end-to-end-e2e-tests-using-cypress-or-playwright))
+- [ ] **Web UI - E2E Tests:** Develop E2E tests for key user flows. ([Details](./web_ui_interaction.md#end-to-end-e2e-tests-using-playwright))
     - Status: TODO
     - Details:
 - [ ] **LLM Interaction - Controlled Integration Tests:** Implement a few controlled integration tests with the live Claude API. ([Details](./llm_interaction.md#integration-tests-limited--controlled))
@@ -345,9 +359,9 @@ This document tracks tasks, challenges, and considerations for the Java LSP Diag
 ## Phase 9: Documentation, Final Deployment & Future Planning
 
 ### 9.1. Deployment & Setup Finalization
-- [ ] **Deployment - Test Fixture Setup Instructions:** Provide clear instructions for setting up the test fixture Java project. ([Details](./deployment_and_setup.md#test-fixture-setup))
-    - Status: TODO
-    - Details: (Needed throughout development and testing)
+- [x] **Deployment - Test Fixture Setup Instructions:** Provide clear instructions for setting up the test fixture Java project. ([Details](./deployment_and_setup.md#test-fixture-setup))
+    - Status: Code complete
+    - Details: `SampleJavaProject` created in `tests/fixtures/`. Basic LSP interaction (references) verified via integration test. Instructions on usage/modification might still be needed.
 - [ ] **Deployment - Production Build Instructions:** Document steps for creating production builds. ([Details](./deployment_and_setup.md#building-for-production-placeholder))
     - Status: TODO
     - Details:

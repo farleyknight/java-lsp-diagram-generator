@@ -208,7 +208,7 @@ When handling user inputs, especially file paths and interactions with external 
     *   Test utility functions and state management logic (Pinia stores/actions/getters).
 *   **Component Integration Tests:**
     *   Test interactions between parent and child components.
-*   **End-to-End (E2E) Tests (using Cypress or Playwright):**
+*   **End-to-End (E2E) Tests (using Playwright):**
     *   Test the full user interaction flow by running the Vue app and a mock backend (or the real backend with all its deeper services mocked).
     *   Simulate user actions (typing, clicking) and verify UI updates and data display.
     *   Example E2E scenarios:

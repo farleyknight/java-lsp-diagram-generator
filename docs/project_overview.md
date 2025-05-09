@@ -11,9 +11,9 @@ The java project will serve as a way to test our ability to generate mermaid seq
 ## Tools:
 
 1.  We will be using a Java LSP to investigate the Java code.
-    *   **Specific Example:** While the implementation aims to be compatible with standard LSP features, development and testing will primarily use **Eclipse JDT LS** as the reference Java LSP server. Configuration details and interactions will be based on its behavior.
+    *   **Specific Example:** While the implementation aims to be compatible with standard LSP features, development and testing will primarily use **Eclipse JDT LS** as the reference Java LSP server. The `scripts/install-lsp.sh` script handles downloading the latest available snapshot. Configuration details, including specific JDK runtime requirements (Java 21+), are in `docs/deployment_and_setup.md`.
 2.  We will also be using `java-ast` (https://github.com/pascalgn/java-ast/)
-    *   **Specific Tool:** The project will use the `java-ast` tool from **`pascalgn/java-ast`** (specifically, version X.Y.Z or latest recommended should be used - check `docs/deployment_and_setup.md` for exact version). This tool is used for its capability to parse Java source into a JSON AST format.
+    *   **Specific Tool:** The project will use the `java-ast` tool from **`pascalgn/java-ast`**. A specific version should be chosen from its releases and configured as detailed in `docs/deployment_and_setup.md`. This tool is used for its capability to parse Java source into a JSON AST format.
 
 We will be using tools (1) and (2) to generate the mermaid sequence diagrams.
 
