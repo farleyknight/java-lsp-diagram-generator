@@ -1,6 +1,7 @@
 import { ChildProcess, spawn } from 'child_process';
 import * as os from 'os';
 import * as path from 'path';
+import * as fs from 'fs';
 import { EventEmitter } from 'events';
 import { JavaLspConfig } from '../config/lsp_config';
 import { 
@@ -13,17 +14,37 @@ import { formatRequestMessage, formatNotificationMessage, parseMessage } from '.
 export class LspManager extends EventEmitter {
     private childProcess: ChildProcess | null = null;
     private requestCounter: number = 0;
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     private pendingRequests: Map<number | string, { resolve: (value: any) => void, reject: (reason?: any) => void, method: string }> = new Map();
     private config: JavaLspConfig;
     private projectRootPath: string;
     private lspServerLog: string[] = [];
     private buffer: Buffer = Buffer.alloc(0);
+    private instanceId: string;
+    private discoveredServerJarPath: string | null = null;
+    private killedByTimeout: boolean = false;
 
     constructor(config: JavaLspConfig, projectRootPath: string) {
         super();
         this.config = config;
         this.projectRootPath = projectRootPath;
+        this.instanceId = Math.random().toString(36).substring(2, 7);
+        console.log(`[LspManager CONSTRUCTOR] New instance created: ${this.instanceId}, requestCounter initialized to 0.`);
+        this.requestCounter = 0;
+    }
+
+    private _findLauncherJar(): string {
+        const pluginsDir = path.join(this.config.lspServerInstallDir, 'plugins');
+        if (!fs.existsSync(pluginsDir) || !fs.statSync(pluginsDir).isDirectory()) {
+            throw new Error(`Plugins directory not found or is not a directory: ${pluginsDir}`);
+        }
+
+        const files = fs.readdirSync(pluginsDir);
+        const launcherJar = files.find(file => file.startsWith('org.eclipse.equinox.launcher_') && file.endsWith('.jar'));
+
+        if (!launcherJar) {
+            throw new Error(`Eclipse Equinox Launcher JAR not found in ${pluginsDir}. Looked for 'org.eclipse.equinox.launcher_*.jar'.`);
+        }
+        return path.join(pluginsDir, launcherJar);
     }
 
     private getPlatformConfigDir(): string {
@@ -38,29 +59,37 @@ export class LspManager extends EventEmitter {
     public async startServer(): Promise<InitializeResult> {
         if (this.childProcess) {
             console.warn("LSP Server is already running.");
-            // Optionally, resolve with current status or re-initialize
-            // For now, let's assume we want a fresh start or this is an error condition
-            throw new Error("LSP server already running.")
+            throw new Error("LSP server already running.");
         }
 
-        const serverJarPath = this.config.serverJarPath;
-        if (!serverJarPath) {
-            throw new Error("LSP server JAR path (serverJarPath) is not configured.");
+        if (!this.config.lspServerInstallDir) {
+            throw new Error("LSP server installation directory (lspServerInstallDir) is not configured.");
         }
-
-        const lspServerDir = path.dirname(serverJarPath);
-        const configDir = path.join(lspServerDir, '..' , this.getPlatformConfigDir()); // Assuming jar is in plugins/ dir
         
-        // Ensure workspaceDataPath is absolute, defaulting to a .jdt_ws_data in the project root
-        const workspaceDataPath = this.config.workspaceDataPath || path.join(this.projectRootPath, '.jdt_ws_data');
+        try {
+            this.discoveredServerJarPath = this._findLauncherJar();
+            console.log(`Discovered LSP Server JAR: ${this.discoveredServerJarPath}`);
+            this.lspServerLog.push(`Discovered LSP Server JAR: ${this.discoveredServerJarPath}`);
+        } catch (error) {
+            console.error("Failed to find LSP server JAR:", error);
+            this.lspServerLog.push(`Failed to find LSP server JAR: ${error}`);
+            throw error;
+        }
+
+        const configDir = path.join(this.config.lspServerInstallDir, this.getPlatformConfigDir());
+        
+        const workspaceDataPath = this.config.workspaceDataPath || path.join(this.projectRootPath, `.jdt_ws_data_${this.instanceId}`);
         if (!path.isAbsolute(workspaceDataPath)) {
             throw new Error(`workspaceDataPath must be an absolute path. Received: ${workspaceDataPath}`);
+        }
+        if (!fs.existsSync(path.dirname(workspaceDataPath))) {
+            fs.mkdirSync(path.dirname(workspaceDataPath), { recursive: true });
         }
 
         const args = [
             ...this.config.serverArgs,
             `-Dlog.level=${this.config.logLevel || 'ALL'}`,
-            '-jar', serverJarPath,
+            '-jar', this.discoveredServerJarPath,
             '-configuration', configDir,
             '-data', workspaceDataPath
         ];
@@ -188,68 +217,122 @@ export class LspManager extends EventEmitter {
         }
         this.lspServerLog.push('Stopping LSP server...');
         console.log("Stopping LSP server...");
+        this.killedByTimeout = false;
 
         if (force) {
-            this.childProcess.kill('SIGTERM');
+            this.childProcess.kill('SIGKILL');
             this.childProcess = null;
             this.pendingRequests.forEach(req => req.reject(new Error('LSP Server forced to stop.')));
             this.pendingRequests.clear();
-            this.lspServerLog.push('LSP Server stopped forcefully.');
-            console.log("LSP Server stopped forcefully.");
-            this.emit('exit', -1, 'SIGTERM');
-            return;
+            this.lspServerLog.push('LSP Server stopped forcefully (force=true).');
+            console.log("LSP Server stopped forcefully (force=true).");
+            return Promise.resolve();
         }
 
-        // eslint-disable-next-line no-async-promise-executor
         return new Promise(async (resolve, reject) => {
-            const timeout = setTimeout(() => {
+            const onExitHandlerForPromise = (code: number | null, signal: NodeJS.Signals | null) => {
+                clearTimeout(timeoutId);
+                this.lspServerLog.push(`LSP Server exited (event for stopServer promise). Code: ${code}, Signal: ${signal}`);
+                resolve();
+            };
+            this.once('exit', onExitHandlerForPromise);
+
+            const timeoutId = setTimeout(() => {
+                this.removeListener('exit', onExitHandlerForPromise);
+                
                 console.warn('LSP Server shutdown timed out. Forcing kill.');
                 this.lspServerLog.push('LSP Server shutdown timed out. Forcing kill.');
-                this.childProcess?.kill('SIGKILL');
-                reject(new Error('Shutdown timeout'));
-            }, 5000); // 5 seconds timeout for graceful shutdown
+                this.killedByTimeout = true;
+
+                const actualExitConfirmationPromise = new Promise<void>((resolveActualExit, rejectActualExit) => {
+                    const secondaryTimeout = setTimeout(() => {
+                        this.lspServerLog.push('Secondary timeout waiting for exit confirmation after SIGKILL.');
+                        rejectActualExit(new Error('Secondary timeout waiting for exit confirmation after SIGKILL'));
+                    }, 200);
+
+                    this.once('exit', (code, signal) => {
+                        clearTimeout(secondaryTimeout);
+                        this.lspServerLog.push(`Received LspManager 'exit' event (code: ${code}, signal: ${signal}) after timeout SIGKILL for stopServer.`);
+                        resolveActualExit();
+                    });
+                });
+                
+                if (this.childProcess) {
+                    this.childProcess.kill('SIGKILL');
+                } else {
+                    this.lspServerLog.push('Child process was null when timeout kill attempted.');
+                }
+                
+                this.pendingRequests.forEach(req => req.reject(new Error(`LSP Server shutdown timed out. Request ${req.method} aborted.`)));
+                this.pendingRequests.clear();
+
+                actualExitConfirmationPromise
+                    .catch(e => this.lspServerLog.push(`actualExitConfirmationPromise error: ${e.message || e}`))
+                    .finally(() => {
+                        reject(new Error('Shutdown timeout'));
+                    });
+
+            }, 5000);
 
             try {
                 await this.sendRequest('shutdown', null);
                 this.sendNotification('exit', null);
-                this.lspServerLog.push('Sent shutdown request and exit notification.');
-                // The 'exit' event handler on childProcess will resolve this or timeout will reject
+                const message = 'Sent shutdown request and exit notification. Waiting for LspManager \'exit\' event.';
+                this.lspServerLog.push(message);
+                // Now we wait for the 'exit' event (onExitHandlerForPromise) or the timeout.
             } catch (error) {
-                console.error('Error during graceful shutdown sequence:', error);
-                this.lspServerLog.push(`Error during graceful shutdown: ${error}`);
-                this.childProcess?.kill('SIGKILL'); // Force kill if shutdown request fails
-                reject(error);
-            } finally {
-                // Listener for the actual exit will handle cleanup and resolve
-                this.once('exit', () => {
-                    clearTimeout(timeout);
-                    resolve();
+                this.removeListener('exit', onExitHandlerForPromise);
+                clearTimeout(timeoutId);
+                console.error('Error during graceful shutdown sequence (request failed):', error);
+                this.lspServerLog.push(`Error during graceful shutdown (request failed): ${error}`);
+                
+                this.killedByTimeout = true;
+                if (this.childProcess) {
+                    this.childProcess.kill('SIGKILL');
+                }
+                
+                this.pendingRequests.forEach(req => req.reject(new Error(`LSP Server shutdown failed (request error). Request ${req.method} aborted.`)));
+                this.pendingRequests.clear();
+                
+                const errorKillExitConfirmPromise = new Promise<void>((resolveErrKill, rejectErrKill) => {
+                    const secondaryTimeout = setTimeout(() => rejectErrKill(new Error('Sec. timeout on error kill confirm')), 200);
+                    this.once('exit', (code, signal) => {
+                        clearTimeout(secondaryTimeout);
+                        this.lspServerLog.push(`Received LspManager 'exit' event (code: ${code}, signal: ${signal}) during error kill confirmation.`);
+                        resolveErrKill();
+                    });
                 });
+
+                errorKillExitConfirmPromise
+                    .catch(e => this.lspServerLog.push(`errorKillExitConfirmPromise error: ${e.message || e}`))
+                    .finally(() => {
+                        reject(error);
+                    });
             }
         });
     }
 
     public sendRequest<TParams, TResult>(method: string, params: TParams): Promise<TResult> {
         if (!this.childProcess || !this.childProcess.stdin) {
+            console.error(`[LspManager.sendRequest INSTANCE: ${this.instanceId}] Server not running or stdin not available`);
             return Promise.reject(new Error('LSP server is not running or stdin is not available.'));
         }
+        console.log(`[LspManager.sendRequest INSTANCE: ${this.instanceId}] Method: ${method}, Current requestCounter for this instance: ${this.requestCounter}, ID to be used: ${this.requestCounter}`);
         const id = this.requestCounter++;
         const message = formatRequestMessage(id, method, params);
         
-        this.lspServerLog.push(`SEND Request (${id}) ${method}: ${JSON.stringify(params)}`);
-        // console.debug(`LSP SEND REQ (${id}) ${method}:`, params);
+        console.log(`[LspManager.sendRequest INSTANCE: ${this.instanceId}] Method: ${method}, ID: ${id}. Pending requests BEFORE add: ${JSON.stringify(Array.from(this.pendingRequests.keys()))}`);
 
-        this.childProcess.stdin.write(message);
-
-        return new Promise((resolve, reject) => {
+        return new Promise<TResult>((resolve, reject) => {
             this.pendingRequests.set(id, { resolve, reject, method });
-            // Optional: Add a timeout for requests
-            // setTimeout(() => {
-            //     if (this.pendingRequests.has(id)) {
-            //         this.pendingRequests.delete(id);
-            //         reject(new Error(`Request ${method} (${id}) timed out`));
-            //     }
-            // }, 30000); // 30s timeout
+            console.log(`[LspManager.sendRequest INSTANCE: ${this.instanceId}] Method: ${method}, ID: ${id}. Pending requests AFTER add: ${JSON.stringify(Array.from(this.pendingRequests.keys()))}`);
+            try {
+                this.childProcess!.stdin!.write(message, 'utf-8');
+            } catch (err) {
+                console.error(`[LspManager.sendRequest INSTANCE: ${this.instanceId}] Error writing to stdin for method ${method}, ID: ${id}:`, err);
+                this.pendingRequests.delete(id); 
+                reject(err);
+            }
         });
     }
 
@@ -265,55 +348,49 @@ export class LspManager extends EventEmitter {
     }
 
     private handleData(data: Buffer): void {
+        console.log(`[LspManager.handleData INSTANCE: ${this.instanceId}] ENTER. Initial this.buffer length: ${this.buffer.length}, Incoming data length: ${data.length}`);
         this.buffer = Buffer.concat([this.buffer, data]);
-        // console.debug("LSP RECV RAW: ", data.toString('utf-8'));
-        this.lspServerLog.push(`RECV RAW: ${data.toString('utf-8')}`);
+        console.log(`[LspManager.handleData INSTANCE: ${this.instanceId}] After concat, this.buffer length: ${this.buffer.length}. Current requestCounter: ${this.requestCounter}.`);
 
-        // eslint-disable-next-line no-constant-condition
         while (true) {
-            const result = parseMessage(this.buffer);
-            if (!result.message) {
-                // Need more data or buffer is malformed (though parseMessage handles some malformations)
-                this.buffer = result.remainingBuffer; // Store potentially incomplete part
-                break;
+            console.log(`[LspManager.handleData INSTANCE: ${this.instanceId}] Top of while loop. Buffer length: ${this.buffer.length}`);
+            const parsed = parseMessage(this.buffer);
+            console.log(`[LspManager.handleData INSTANCE: ${this.instanceId}] parseMessage called. Returned message: ${parsed.message ? 'exists' : 'null'}`);
+            if (!parsed.message) {
+                console.log(`[LspManager.handleData INSTANCE: ${this.instanceId}] No message from parseMessage, breaking while loop.`);
+                break; 
             }
+            this.buffer = parsed.remainingBuffer;
+            console.log(`[LspManager.handleData INSTANCE: ${this.instanceId}] After processing message, remainingBuffer length: ${this.buffer.length}`);
 
-            this.buffer = result.remainingBuffer;
-            const message = result.message as JsonRpcResponse | JsonRpcNotification;
-            // console.debug("LSP RECV MSG: ", message);
-            this.lspServerLog.push(`RECV MSG: ${JSON.stringify(message)}`);
+            const message = parsed.message as any; 
+            // COMMENTING OUT VERBOSE LOG
+            // this.lspServerLog.push(`RECV ${message.method || 'response'} (ID: ${message.id ?? 'N/A'}): ${JSON.stringify(message.params || message.result || message.error || {})}`);
 
-            if ('id' in message && message.id !== null && message.id !== undefined) { // It's a Response
+            if (message.id !== undefined) { 
                 const response = message as JsonRpcResponse;
-                // Ensure response.id is not null before using it as a key
+                
                 if (response.id === null) {
-                    console.warn('Received response with null ID:', response);
-                    this.lspServerLog.push(`WARN: Received response with null ID: ${JSON.stringify(response)}`);
-                    // Potentially emit an error or handle as a special case
-                    // For now, we just log and ignore it as we can't map it to a request.
-                    return; // or continue to next message in buffer
-                }
-                const pending = this.pendingRequests.get(response.id);
-                if (pending) {
-                    if (response.error) {
-                        console.error(`LSP Error for ${pending.method} (${response.id}):`, response.error);
-                        this.lspServerLog.push(`ERR for ${pending.method} (${response.id}): ${JSON.stringify(response.error)}`);
-                        pending.reject(response.error);
-                    } else {
-                        this.lspServerLog.push(`OK for ${pending.method} (${response.id})`);
-                        pending.resolve(response.result);
-                    }
-                    this.pendingRequests.delete(response.id);
+                    console.warn(`[LspManager.handleData INSTANCE: ${this.instanceId}] Received response with null ID:`, response);
+                    // this.lspServerLog.push(`WARN: Received response with null ID: ${JSON.stringify(response)}`);
                 } else {
-                    console.warn(`Received response for unknown request ID: ${response.id}`);
-                    this.lspServerLog.push(`WARN: Received response for unknown request ID: ${response.id}`);
+                    console.log(`[LspManager.handleData INSTANCE: ${this.instanceId}] Processing response for ID: ${response.id}. Current pending request IDs: ${JSON.stringify(Array.from(this.pendingRequests.keys()))}`);
+                    const pending = this.pendingRequests.get(response.id);
+                    if (pending) {
+                        if (response.error) {
+                            pending.reject(response.error);
+                        } else {
+                            pending.resolve(response.result);
+                        }
+                        this.pendingRequests.delete(response.id);
+                    } else {
+                        console.warn(`[LspManager.handleData INSTANCE: ${this.instanceId}] Received response for unknown request ID: ${response.id}`); 
+                        // this.lspServerLog.push(`WARN: Received response for unknown request ID: ${response.id}`);
+                    }
                 }
-            } else { // It's a Notification
+            } else { 
                 const notification = message as JsonRpcNotification;
-                // console.debug(`LSP RECV NOTIF ${notification.method}:`, notification.params);
-                this.lspServerLog.push(`RECV Notification ${notification.method}: ${JSON.stringify(notification.params)}`);
                 this.emit(notification.method, notification.params);
-                this.emit('notification', notification); // Generic notification event
             }
         }
     }
@@ -336,10 +413,20 @@ export class LspManager extends EventEmitter {
     private handleExit(code: number | null, signal: NodeJS.Signals | null): void {
         console.log(`LSP Server Exited. Code: ${code}, Signal: ${signal}`);
         this.lspServerLog.push(`EXIT. Code: ${code}, Signal: ${signal}`);
+        
+        const KILLED_BY_TIMEOUT_OR_FORCE = this.killedByTimeout;
+        
         this.childProcess = null;
-        // Reject any outstanding requests
-        this.pendingRequests.forEach(req => req.reject(new Error(`LSP Server exited with code ${code}, signal ${signal}. Request ${req.method} aborted.`)));
-        this.pendingRequests.clear();
+        this.killedByTimeout = false;
+
+        if (!KILLED_BY_TIMEOUT_OR_FORCE) {
+            if (this.pendingRequests.size > 0) {
+                this.lspServerLog.push(`Server exited unexpectedly or gracefully with ${this.pendingRequests.size} pending requests. Rejecting them.`);
+                this.pendingRequests.forEach(req => req.reject(new Error(`LSP Server exited with code ${code}, signal ${signal}. Request ${req.method} aborted.`)));
+                this.pendingRequests.clear();
+            }
+        }
+
         this.emit('exit', code, signal);
     }
 

@@ -12,12 +12,33 @@ Before you begin, ensure you have the following installed:
 *   **`java-ast` tool:**
     *   Download a specific JAR file version from [https://github.com/pascalgn/java-ast/releases](https://github.com/pascalgn/java-ast/releases) (e.g., v1.10.0). Document the chosen version here: `v0.4.0`.
     *   The `JAVA_AST_JAR_PATH` in your `.env` file must point to this downloaded JAR.
-*   **Java LSP Server:**
-    *   **Server Used:** Eclipse JDT LS ([https://github.com/eclipse-jdtls/eclipse.jdt.ls](https://github.com/eclipse-jdtls/eclipse.jdt.ls))
-    *   **Installation:** The `scripts/install-lsp.sh` script downloads the latest available snapshot of Eclipse JDT LS. This means the exact version can vary if the script is re-run later. The downloaded server files are placed in the `bin/eclipse.jdt.ls` directory.
-    *   **Runtime JDK for JDT LS:** Requires Java 21 or later to run the LSP server itself. Ensure this is installed and accessible.
-    *   **Project JDK Compatibility:** Eclipse JDT LS can analyze projects using JDK versions from 1.8 through 24. The JDK version specified above for your projects should be compatible.
-    *   **Manual Download/Setup (Alternative to script):** Milestone builds can be downloaded from [http://download.eclipse.org/jdtls/milestones/](http://download.eclipse.org/jdtls/milestones/). These are typically packaged as archives (e.g., `jdt-language-server-<version>.tar.gz` or `.zip`). If setting up manually, extract the archive and configure the `LSP_SERVER_JAR_PATH` in your `.env` file to point to the `plugins/org.eclipse.equinox.launcher_<VERSION>.jar` within the extracted directory.
+*   **Java LSP Server (Eclipse JDT LS):**
+    *   **Server Used:** Eclipse JDT LS ([https://github.com/eclipse-jdtls/eclipse.jdt.ls](https://github.com/eclipse-jdtls/eclipse.jdt.ls)).
+    *   **Runtime JDK for JDT LS:** The LSP server itself requires **Java 21 or later** to run. Ensure this is installed and accessible via your system's `PATH` or by setting the `JAVA_HOME` environment variable. The `launch-lsp.ts` script will attempt to use `JAVA_HOME/bin/java` if `JAVA_HOME` is set, otherwise it will use `java` from the `PATH`.
+    *   **Project JDK Compatibility:** Eclipse JDT LS can analyze projects using JDK versions from 1.8 through 24. The JDK version specified in the general prerequisites for your projects should be compatible.
+
+    *   **Automated Setup (Recommended):**
+        *   **Installation:** Run `npm run lsp:install`. This executes the `scripts/install-lsp.sh` script, which downloads the latest available snapshot of Eclipse JDT LS and installs it into the `bin/eclipse.jdt.ls` directory.
+        *   **Starting the Server:** Run `npm run lsp:start -- <path_to_java_project>`. This executes the `src/scripts/launch-lsp.ts` script.
+            *   You **must** replace `<path_to_java_project>` with the absolute or relative path to the Java project you want to analyze. For example: `npm run lsp:start -- /path/to/your/java/project` or `npm run lsp:start -- C:\Users\YourUser\Projects\MyJavaProject`.
+            *   The default `npm run lsp:start` script in `package.json` is configured to point to `tests/fixtures/SampleJavaProject`. You can modify `package.json` or, more typically, provide the path argument directly as shown above.
+            *   The server will start in the background (detached).
+        *   **Stopping the Server:** Run `npm run lsp:stop`. This executes `src/scripts/stop-lsp.ts`, which reads the PID from the `.lsp.pid` file (see below) and attempts to stop the server process.
+
+    *   **Server Management Details (when using automated setup):**
+        *   **PID File:** When the LSP server is started using `npm run lsp:start`, a `.lsp.pid` file is created in the project root directory. This file stores the process ID (PID) of the detached LSP server. It is used by `npm run lsp:stop` to identify and terminate the correct process.
+        *   **Log Files:** The `launch-lsp.ts` script redirects the standard output and standard error of the JDT LS process to log files located in the `logs/` directory at the project root:
+            *   `logs/lsp.log`: Contains standard output from the LSP server. Useful for general information and debugging.
+            *   `logs/lsp.err.log`: Contains standard error output from the LSP server. Check this file for any errors or critical issues.
+        *   **Paths and Configuration:** The `launch-lsp.ts` script automatically determines the path to the LSP server's launcher JAR and its OS-specific configuration directory based on the installation location (`bin/eclipse.jdt.ls`). It **does not** use the `LSP_SERVER_JAR_PATH` or `LSP_SERVER_CONFIG_PATH` environment variables from your `.env` file. These `.env` variables are intended for a manual setup (see below) or if other parts of the system were designed to use them.
+
+    *   **Manual Download/Setup (Alternative):**
+        *   Milestone builds can be downloaded from [http://download.eclipse.org/jdtls/milestones/](http://download.eclipse.org/jdtls/milestones/). These are typically packaged as archives (e.g., `jdt-language-server-<version>.tar.gz` or `.zip`).
+        *   If setting up manually (i.e., not using `npm run lsp:install` and `npm run lsp:start`), you would need to:
+            1.  Extract the archive to a location of your choice.
+            2.  Set the `LSP_SERVER_JAR_PATH` in your `.env` file to point to the `plugins/org.eclipse.equinox.launcher_<VERSION>.jar` within the extracted directory.
+            3.  Set the `LSP_SERVER_CONFIG_PATH` in your `.env` file to point to the appropriate OS-specific configuration directory (e.g., `config_linux`, `config_mac`, `config_win`) within the extracted directory.
+            4.  You would then need a custom mechanism to launch the server with these paths, as `npm run lsp:start` would not use them.
 
 ## Configuration
 
@@ -38,10 +59,10 @@ The application uses `.env` files for managing environment-specific configuratio
     ANTHROPIC_API_KEY=your_claude_api_key_here
 
     # Paths to Java tools
-    JAVA_HOME=/path/to/your/jdk # Optional, if not set in system environment
+    JAVA_HOME=/path/to/your/jdk # Optional, if not set in system environment. Used by launch-lsp.ts if present.
     JAVA_AST_JAR_PATH=/path/to/java-ast.jar # Full path to the downloaded java-ast JAR
-    LSP_SERVER_JAR_PATH=/path/to/lsp/server/jar # Full path to the LSP server JAR
-    LSP_SERVER_CONFIG_PATH=/path/to/lsp/config # Optional: Path to LSP server configuration file/directory
+    LSP_SERVER_JAR_PATH=/path/to/lsp/server/jar # Full path to the LSP server JAR (for manual setups)
+    LSP_SERVER_CONFIG_PATH=/path/to/lsp/config # Optional: Path to LSP server configuration (for manual setups)
 
     # Other configurations
     # Add any other environment variables required by the application

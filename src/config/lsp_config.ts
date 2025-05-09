@@ -1,6 +1,6 @@
 export interface JavaLspConfig {
     serverCommand: string;
-    serverJarPath: string; // Path to the equinox launcher JAR
+    lspServerInstallDir: string; // Path to the root of the JDT LS installation (e.g., 'bin/eclipse.jdt.ls')
     serverArgs: string[];
     workspaceDataPath?: string; // Absolute path for -data parameter, unique per project
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -10,7 +10,7 @@ export interface JavaLspConfig {
 
 export const defaultLspConfig: JavaLspConfig = {
     serverCommand: "java",
-    serverJarPath: "bin/eclipse.jdt.ls/plugins/org.eclipse.equinox.launcher_1.7.0.v20250404-1055.jar", // Updated path
+    lspServerInstallDir: "bin/eclipse.jdt.ls", // Root installation directory
     serverArgs: [
         "-Declipse.application=org.eclipse.jdt.ls.core.id1",
         "-Dosgi.bundles.defaultStartLevel=4",

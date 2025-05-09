@@ -12,6 +12,14 @@ const LSP_ERR_FILE = path.join(LOG_DIR, 'lsp.err.log');
 const LSP_SERVER_BASE_DIR = path.resolve(__dirname, '..', '..', 'bin', 'eclipse.jdt.ls');
 const PLUGINS_DIR = path.join(LSP_SERVER_BASE_DIR, 'plugins');
 
+// Interface for the parts of 'process' we need to inject
+interface ProcessLike {
+    env: NodeJS.ProcessEnv;
+    kill: (pid: number, signal?: string | number) => boolean;
+    exit: (code?: number) => never;
+    // platform: NodeJS.Platform; // os.platform() is used, not process.platform
+}
+
 function findLauncherJar(pluginsDir: string): string | null {
     if (!fs.existsSync(pluginsDir)) {
         console.error(`Error: Plugins directory not found: ${pluginsDir}`);
@@ -23,8 +31,9 @@ function findLauncherJar(pluginsDir: string): string | null {
     return launcherJar ? path.join(pluginsDir, launcherJar) : null;
 }
 
+// Modified to throw an error instead of exiting
 function getOSSpecificConfigDir(): string {
-    const platform = os.platform();
+    const platform = os.platform(); // os.platform() is fine, not from 'process'
     let configDirName = '';
     if (platform === 'win32') {
         configDirName = 'config_win';
@@ -35,14 +44,13 @@ function getOSSpecificConfigDir(): string {
     }
     const configPath = path.join(LSP_SERVER_BASE_DIR, configDirName);
     if (!fs.existsSync(configPath)) {
-        console.error(`Error: OS-specific configuration directory not found: ${configPath}`);
-        console.error('The LSP server installation might be incomplete or corrupted.');
-        process.exit(1);
+        // Throw an error instead of calling process.exit
+        throw new Error(`OS-specific configuration directory not found: ${configPath}. The LSP server installation might be incomplete or corrupted.`);
     }
     return configPath;
 }
 
-function launchLspServer(projectPath: string): child_process.ChildProcess | null {
+function launchLspServer(projectPath: string, proc: ProcessLike): child_process.ChildProcess | null {
     const launcherJarPath = findLauncherJar(PLUGINS_DIR);
     if (!launcherJarPath) {
         console.error('Error: Could not find the Eclipse JDT LS launcher JAR.');
@@ -51,7 +59,14 @@ function launchLspServer(projectPath: string): child_process.ChildProcess | null
         return null;
     }
 
-    const configDir = getOSSpecificConfigDir();
+    let configDir: string;
+    try {
+        configDir = getOSSpecificConfigDir();
+    } catch (e: unknown) {
+        console.error((e as Error).message);
+        // proc.exit(1); // Caller (main block) should handle exit based on null return or this script's exit code
+        return null; // Indicate failure to the caller
+    }
 
     // Ensure projectPath is absolute, as -data requires an absolute path.
     const absoluteProjectPath = path.resolve(projectPath);
@@ -96,8 +111,8 @@ function launchLspServer(projectPath: string): child_process.ChildProcess | null
     console.log(`java ${serverArgs.join(' ')}`);
     console.log(`LSP Server STDIN/STDOUT will be piped from/to this process.`);
 
-    // Ensure JAVA_HOME is set or java is in PATH
-    const javaExecutable = process.env.JAVA_HOME ? path.join(process.env.JAVA_HOME, 'bin', 'java') : 'java';
+    // Ensure JAVA_HOME is set or java is in PATH - using injected proc.env
+    const javaExecutable = proc.env.JAVA_HOME ? path.join(proc.env.JAVA_HOME, 'bin', 'java') : 'java';
 
     // Print Java version for debugging
     console.log(`Attempting to use Java from: ${javaExecutable}`);
@@ -133,8 +148,8 @@ function launchLspServer(projectPath: string): child_process.ChildProcess | null
             const oldPid = parseInt(fs.readFileSync(PID_FILE, 'utf8'), 10);
             if (!isNaN(oldPid)) {
                 try {
-                    // Check if process exists (0 signal doesn't kill, just checks existence)
-                    process.kill(oldPid, 0);
+                    // Check if process exists (0 signal doesn't kill, just checks existence) - using injected proc.kill
+                    proc.kill(oldPid, 0);
                     console.warn(`LSP server might already be running with PID ${oldPid} (found in ${PID_FILE}).`);
                     console.warn('If it is stuck, run "npm run lsp:stop" first.');
                     // Optionally exit here, or let spawn fail if port is taken etc.
@@ -186,26 +201,29 @@ function launchLspServer(projectPath: string): child_process.ChildProcess | null
 }
 
 if (require.main === module) {
-    const projectPathArg = process.argv[2];
+    const projectPathArg = process.argv[2]; // Global process.argv is fine here for script execution
     if (!projectPathArg) {
         console.error('Usage: ts-node src/scripts/launch-lsp.ts <path_to_java_project>');
         console.error('Example: npm run lsp:start -- tests/fixtures/SampleJavaProject');
-        process.exit(1);
+        process.exit(1); // Global process.exit is fine here for script execution
     }
     console.log(`Target Java project path: ${projectPathArg}`);
-    const lsp = launchLspServer(projectPathArg);
+    
+    // Pass the global process object when running as a script
+    const lsp = launchLspServer(projectPathArg, process);
     
     if (lsp) {
         // Since it's detached, we don't keep this script running.
         // We just confirm it was launched.
         console.log("launch-lsp.ts: Successfully launched detached LSP server.");
         console.log(`Monitor logs in ${LOG_DIR}`);
-        // Exiting the script cleanly
+        // Exiting the script cleanly - global process.exit is fine here
         process.exit(0);
     } else {
         console.error("Failed to launch LSP server.");
+        // Global process.exit is fine here for script execution
         process.exit(1);
     }
 }
 
-export { launchLspServer }; 
+export { launchLspServer, ProcessLike }; // Export ProcessLike for testing if needed 

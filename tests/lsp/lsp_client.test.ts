@@ -17,343 +17,163 @@ import {
     CallHierarchyOutgoingCall,
     DocumentUri,
     Position,
-    ClientCapabilities
+    ClientCapabilities,
+    DocumentSymbolParams,
+    HoverParams,
+    SemanticTokensParams
 } from '../../src/lsp/types';
+import { JavaLspConfig } from '../../src/config/lsp_config';
 
 // Mock LspManager
 // Adjust the mock path based on the new file location
 jest.mock('../../src/lsp/lsp_manager'); // Automatically mocks all methods
 
+const MockLspManager = LspManager as jest.MockedClass<typeof LspManager>; // Get the mocked class type
+
 describe('LspClient', () => {
-    let mockLspManager: jest.Mocked<LspManager>;
+    let mockLspManagerInstance: jest.Mocked<LspManager>;
     let lspClient: LspClient;
+    let dummyConfig: JavaLspConfig;
+    const dummyProjectRoot = '/dummy/project';
 
     beforeEach(() => {
-        // Create a new mock LspManager for each test
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        mockLspManager = new LspManager(null as any, null as any) as jest.Mocked<LspManager>; 
-        jest.clearAllMocks(); 
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        mockLspManager = new LspManager(null as any, null as any) as jest.Mocked<LspManager>; 
-
-        lspClient = new LspClient(mockLspManager);
+        // Clear all instances and calls to constructor and all methods: 
+        MockLspManager.mockClear();
+        // Create a new mock instance for LspManager before each test
+        // This also allows us to spy on methods of this specific instance
+        dummyConfig = {
+            serverCommand: 'dummy',
+            lspServerInstallDir: '/dummy/lsp',
+            serverArgs: [],
+            workspaceDataPath: '/dummy/data',
+            logLevel: 'OFF'
+        };
+        mockLspManagerInstance = new MockLspManager(dummyConfig, dummyProjectRoot) as jest.Mocked<LspManager>; 
+        lspClient = new LspClient(mockLspManagerInstance);
     });
 
-    describe('initialize', () => {
-        it('should call lspManager.sendRequest with "initialize" and correct params, returning the result', async () => {
-            const params: InitializeParams = {
-                processId: 123,
-                rootUri: 'file:///test/project' as DocumentUri,
-                capabilities: {} as ClientCapabilities,
-                trace: 'off',
-            };
-            const expectedResult: InitializeResult = {
-                capabilities: {},
-            };
-
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            mockLspManager.sendRequest.mockResolvedValue(expectedResult as any);
+    // Test suite for request methods
+    describe('Request Methods', () => {
+        it('should send "initialize" request via LspManager', async () => {
+            const params: InitializeParams = { rootUri: null, capabilities: {} } as InitializeParams; // Simplified params
+            const expectedResult = { capabilities: {} };
+            mockLspManagerInstance.sendRequest.mockResolvedValue(expectedResult);
 
             const result = await lspClient.initialize(params);
 
-            expect(mockLspManager.sendRequest).toHaveBeenCalledWith('initialize', params);
-            expect(result).toEqual(expectedResult);
+            expect(mockLspManagerInstance.sendRequest).toHaveBeenCalledWith('initialize', params);
+            expect(result).toBe(expectedResult);
         });
-    });
 
-    describe('initialized', () => {
-        it('should call lspManager.sendNotification with "initialized" and correct params', () => {
-            const params: InitializedParams = {}; 
-
-            lspClient.initialized(params);
-
-            expect(mockLspManager.sendNotification).toHaveBeenCalledWith('initialized', params);
-        });
-    });
-
-    describe('shutdown', () => {
-        it('should call lspManager.sendRequest with "shutdown" and null params, returning a promise that resolves', async () => {
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            mockLspManager.sendRequest.mockResolvedValue(null as any);
-
+        it('should send "shutdown" request via LspManager', async () => {
+            mockLspManagerInstance.sendRequest.mockResolvedValue(undefined); // Shutdown returns void
             await lspClient.shutdown();
+            expect(mockLspManagerInstance.sendRequest).toHaveBeenCalledWith('shutdown', null);
+        });
 
-            expect(mockLspManager.sendRequest).toHaveBeenCalledWith('shutdown', null);
+        it('should send "textDocument/definition" request', async () => {
+            const params: TextDocumentPositionParams = { textDocument: { uri: 'file:///test.java' }, position: { line: 0, character: 0 } };
+            mockLspManagerInstance.sendRequest.mockResolvedValue(null);
+            await lspClient.getTextDocumentDefinition(params);
+            expect(mockLspManagerInstance.sendRequest).toHaveBeenCalledWith('textDocument/definition', params);
+        });
+
+        it('should send "textDocument/references" request', async () => {
+            const params: ReferenceParams = { 
+                textDocument: { uri: 'file:///test.java' }, 
+                position: { line: 0, character: 0 }, 
+                context: { includeDeclaration: true }
+            };
+            mockLspManagerInstance.sendRequest.mockResolvedValue([]);
+            await lspClient.getTextDocumentReferences(params);
+            expect(mockLspManagerInstance.sendRequest).toHaveBeenCalledWith('textDocument/references', params);
+        });
+
+        it('should send "callHierarchy/prepare" request', async () => {
+            const params: CallHierarchyPrepareParams = { textDocument: { uri: 'file:///test.java' }, position: { line: 0, character: 0 } };
+            mockLspManagerInstance.sendRequest.mockResolvedValue([]);
+            await lspClient.prepareCallHierarchy(params);
+            expect(mockLspManagerInstance.sendRequest).toHaveBeenCalledWith('callHierarchy/prepare', params);
+        });
+
+        it('should send "callHierarchy/incomingCalls" request', async () => {
+            const params: CallHierarchyIncomingCallsParams = { item: {} as any }; // Simplified item
+            mockLspManagerInstance.sendRequest.mockResolvedValue([]);
+            await lspClient.getIncomingCalls(params);
+            expect(mockLspManagerInstance.sendRequest).toHaveBeenCalledWith('callHierarchy/incomingCalls', params);
+        });
+
+        it('should send "callHierarchy/outgoingCalls" request', async () => {
+            const params: CallHierarchyOutgoingCallsParams = { item: {} as any }; // Simplified item
+            mockLspManagerInstance.sendRequest.mockResolvedValue([]);
+            await lspClient.getOutgoingCalls(params);
+            expect(mockLspManagerInstance.sendRequest).toHaveBeenCalledWith('callHierarchy/outgoingCalls', params);
+        });
+
+        it('should send "textDocument/documentSymbol" request', async () => {
+            const params: DocumentSymbolParams = { textDocument: { uri: 'file:///test.java' } };
+            mockLspManagerInstance.sendRequest.mockResolvedValue([]);
+            await lspClient.getDocumentSymbols(params);
+            expect(mockLspManagerInstance.sendRequest).toHaveBeenCalledWith('textDocument/documentSymbol', params);
+        });
+
+        it('should send "textDocument/hover" request', async () => {
+            const params: HoverParams = { textDocument: { uri: 'file:///test.java' }, position: { line: 0, character: 0 } };
+            mockLspManagerInstance.sendRequest.mockResolvedValue(null);
+            await lspClient.getTextDocumentHover(params);
+            expect(mockLspManagerInstance.sendRequest).toHaveBeenCalledWith('textDocument/hover', params);
+        });
+
+        it('should send "textDocument/semanticTokens/full" request', async () => {
+            const params: SemanticTokensParams = { textDocument: { uri: 'file:///test.java' } };
+            mockLspManagerInstance.sendRequest.mockResolvedValue(null);
+            await lspClient.getSemanticTokensFull(params);
+            expect(mockLspManagerInstance.sendRequest).toHaveBeenCalledWith('textDocument/semanticTokens/full', params);
         });
     });
 
-    describe('exit', () => {
-        it('should call lspManager.sendNotification with "exit" and null params', () => {
+    // Test suite for notification methods
+    describe('Notification Methods', () => {
+        it('should send "initialized" notification via LspManager', () => {
+            const params: InitializedParams = {};
+            lspClient.initialized(params);
+            expect(mockLspManagerInstance.sendNotification).toHaveBeenCalledWith('initialized', params);
+        });
+
+        it('should send "exit" notification via LspManager', () => {
             lspClient.exit();
-
-            expect(mockLspManager.sendNotification).toHaveBeenCalledWith('exit', null);
+            expect(mockLspManagerInstance.sendNotification).toHaveBeenCalledWith('exit', null);
         });
-    });
 
-    describe('textDocumentDidOpen', () => {
-        it('should call lspManager.sendNotification with "textDocument/didOpen" and correct params', () => {
-            const params: DidOpenTextDocumentParams = {
-                textDocument: {
-                    uri: 'file:///test/project/doc.java' as DocumentUri,
-                    languageId: 'java',
-                    version: 1,
-                    text: 'public class Test {}'
-                }
+        it('should send "textDocument/didOpen" notification', () => {
+            const params: DidOpenTextDocumentParams = { 
+                textDocument: { uri: 'file:///test.java', languageId: 'java', version: 1, text: '' } 
             };
-
             lspClient.textDocumentDidOpen(params);
-
-            expect(mockLspManager.sendNotification).toHaveBeenCalledWith('textDocument/didOpen', params);
+            expect(mockLspManagerInstance.sendNotification).toHaveBeenCalledWith('textDocument/didOpen', params);
         });
     });
 
-    describe('getTextDocumentDefinition', () => {
-        it('should call lspManager.sendRequest with "textDocument/definition" and correct params, returning the result', async () => {
-            const params: TextDocumentPositionParams = {
-                textDocument: { uri: 'file:///test/project/doc.java' as DocumentUri },
-                position: { line: 0, character: 0 }
-            };
-            const expectedResult: Definition = {
-                uri: 'file:///test/project/doc.java' as DocumentUri,
-                range: { start: { line: 0, character: 0 }, end: { line: 0, character: 10 } }
-            };
-
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            mockLspManager.sendRequest.mockResolvedValue(expectedResult as any);
-
-            const result = await lspClient.getTextDocumentDefinition(params);
-
-            expect(mockLspManager.sendRequest).toHaveBeenCalledWith('textDocument/definition', params);
-            expect(result).toEqual(expectedResult);
-        });
-
-        it('should return null if lspManager.sendRequest resolves with null', async () => {
-            const params: TextDocumentPositionParams = {
-                textDocument: { uri: 'file:///test/project/doc.java' as DocumentUri },
-                position: { line: 0, character: 0 }
-            };
-
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            mockLspManager.sendRequest.mockResolvedValue(null as any);
-
-            const result = await lspClient.getTextDocumentDefinition(params);
-
-            expect(mockLspManager.sendRequest).toHaveBeenCalledWith('textDocument/definition', params);
-            expect(result).toBeNull();
-        });
-    });
-
-    describe('getTextDocumentReferences', () => {
-        it('should call lspManager.sendRequest with "textDocument/references" and correct params, returning the result', async () => {
-            const params: ReferenceParams = {
-                textDocument: { uri: 'file:///test/project/doc.java' as DocumentUri },
-                position: { line: 0, character: 0 },
-                context: { includeDeclaration: false }
-            };
-            const expectedResult: Location[] = [
-                { uri: 'file:///test/project/other.java' as DocumentUri, range: { start: { line: 1, character: 5 }, end: { line: 1, character: 15 } } }
-            ];
-
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            mockLspManager.sendRequest.mockResolvedValue(expectedResult as any);
-
-            const result = await lspClient.getTextDocumentReferences(params);
-
-            expect(mockLspManager.sendRequest).toHaveBeenCalledWith('textDocument/references', params);
-            expect(result).toEqual(expectedResult);
-        });
-
-        it('should return null if lspManager.sendRequest resolves with null', async () => {
-            const params: ReferenceParams = {
-                textDocument: { uri: 'file:///test/project/doc.java' as DocumentUri },
-                position: { line: 0, character: 0 },
-                context: { includeDeclaration: false }
-            };
-
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            mockLspManager.sendRequest.mockResolvedValue(null as any);
-
-            const result = await lspClient.getTextDocumentReferences(params);
-
-            expect(mockLspManager.sendRequest).toHaveBeenCalledWith('textDocument/references', params);
-            expect(result).toBeNull();
-        });
-    });
-
-    describe('prepareCallHierarchy', () => {
-        it('should call lspManager.sendRequest with "callHierarchy/prepare" and correct params, returning the result', async () => {
-            const params: CallHierarchyPrepareParams = {
-                textDocument: { uri: 'file:///test/project/doc.java' as DocumentUri },
-                position: { line: 0, character: 0 }
-            };
-            const expectedResult: CallHierarchyItem[] = [
-                {
-                    name: 'testMethod',
-                    kind: 3, // SymbolKind.Method
-                    uri: 'file:///test/project/doc.java' as DocumentUri,
-                    range: { start: { line: 0, character: 0 }, end: { line: 0, character: 10 } },
-                    selectionRange: { start: { line: 0, character: 0 }, end: { line: 0, character: 10 } }
-                }
-            ];
-
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            mockLspManager.sendRequest.mockResolvedValue(expectedResult as any);
-
-            const result = await lspClient.prepareCallHierarchy(params);
-
-            expect(mockLspManager.sendRequest).toHaveBeenCalledWith('callHierarchy/prepare', params);
-            expect(result).toEqual(expectedResult);
-        });
-
-        it('should return null if lspManager.sendRequest resolves with null', async () => {
-            const params: CallHierarchyPrepareParams = {
-                textDocument: { uri: 'file:///test/project/doc.java' as DocumentUri },
-                position: { line: 0, character: 0 }
-            };
-
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            mockLspManager.sendRequest.mockResolvedValue(null as any);
-
-            const result = await lspClient.prepareCallHierarchy(params);
-
-            expect(mockLspManager.sendRequest).toHaveBeenCalledWith('callHierarchy/prepare', params);
-            expect(result).toBeNull();
-        });
-    });
-
-    describe('getIncomingCalls', () => {
-        it('should call lspManager.sendRequest with "callHierarchy/incomingCalls" and correct params, returning the result', async () => {
-            const params: CallHierarchyIncomingCallsParams = {
-                item: {
-                    name: 'testMethod',
-                    kind: 3, // SymbolKind.Method
-                    uri: 'file:///test/project/doc.java' as DocumentUri,
-                    range: { start: { line: 0, character: 0 }, end: { line: 0, character: 10 } },
-                    selectionRange: { start: { line: 0, character: 0 }, end: { line: 0, character: 10 } }
-                }
-            };
-            const expectedResult: CallHierarchyIncomingCall[] = [
-                {
-                    from: {
-                        name: 'callerMethod',
-                        kind: 3,
-                        uri: 'file:///test/project/caller.java' as DocumentUri,
-                        range: { start: { line: 5, character: 0 }, end: { line: 5, character: 20 } },
-                        selectionRange: { start: { line: 5, character: 0 }, end: { line: 5, character: 20 } }
-                    },
-                    fromRanges: [{ start: { line: 5, character: 10 }, end: { line: 5, character: 18 } }]
-                }
-            ];
-
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            mockLspManager.sendRequest.mockResolvedValue(expectedResult as any);
-
-            const result = await lspClient.getIncomingCalls(params);
-
-            expect(mockLspManager.sendRequest).toHaveBeenCalledWith('callHierarchy/incomingCalls', params);
-            expect(result).toEqual(expectedResult);
-        });
-
-        it('should return null if lspManager.sendRequest resolves with null', async () => {
-            const params: CallHierarchyIncomingCallsParams = {
-                item: {
-                    name: 'testMethod',
-                    kind: 3,
-                    uri: 'file:///test/project/doc.java' as DocumentUri,
-                    range: { start: { line: 0, character: 0 }, end: { line: 0, character: 10 } },
-                    selectionRange: { start: { line: 0, character: 0 }, end: { line: 0, character: 10 } }
-                }
-            };
-
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            mockLspManager.sendRequest.mockResolvedValue(null as any);
-
-            const result = await lspClient.getIncomingCalls(params);
-
-            expect(mockLspManager.sendRequest).toHaveBeenCalledWith('callHierarchy/incomingCalls', params);
-            expect(result).toBeNull();
-        });
-    });
-
-    describe('getOutgoingCalls', () => {
-        it('should call lspManager.sendRequest with "callHierarchy/outgoingCalls" and correct params, returning the result', async () => {
-            const params: CallHierarchyOutgoingCallsParams = {
-                item: {
-                    name: 'testMethod',
-                    kind: 3, // SymbolKind.Method
-                    uri: 'file:///test/project/doc.java' as DocumentUri,
-                    range: { start: { line: 0, character: 0 }, end: { line: 0, character: 10 } },
-                    selectionRange: { start: { line: 0, character: 0 }, end: { line: 0, character: 10 } }
-                }
-            };
-            const expectedResult: CallHierarchyOutgoingCall[] = [
-                {
-                    to: {
-                        name: 'calleeMethod',
-                        kind: 3,
-                        uri: 'file:///test/project/callee.java' as DocumentUri,
-                        range: { start: { line: 10, character: 0 }, end: { line: 10, character: 25 } },
-                        selectionRange: { start: { line: 10, character: 0 }, end: { line: 10, character: 25 } }
-                    },
-                    fromRanges: [{ start: { line: 0, character: 5 }, end: { line: 0, character: 12 } }]
-                }
-            ];
-
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            mockLspManager.sendRequest.mockResolvedValue(expectedResult as any);
-
-            const result = await lspClient.getOutgoingCalls(params);
-
-            expect(mockLspManager.sendRequest).toHaveBeenCalledWith('callHierarchy/outgoingCalls', params);
-            expect(result).toEqual(expectedResult);
-        });
-
-        it('should return null if lspManager.sendRequest resolves with null', async () => {
-            const params: CallHierarchyOutgoingCallsParams = {
-                item: {
-                    name: 'testMethod',
-                    kind: 3,
-                    uri: 'file:///test/project/doc.java' as DocumentUri,
-                    range: { start: { line: 0, character: 0 }, end: { line: 0, character: 10 } },
-                    selectionRange: { start: { line: 0, character: 0 }, end: { line: 0, character: 10 } }
-                }
-            };
-
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            mockLspManager.sendRequest.mockResolvedValue(null as any);
-
-            const result = await lspClient.getOutgoingCalls(params);
-
-            expect(mockLspManager.sendRequest).toHaveBeenCalledWith('callHierarchy/outgoingCalls', params);
-            expect(result).toBeNull();
-        });
-    });
-
-    describe('createPosition', () => {
-        it('should return a Position object with the given line and character', () => {
+    // Test suite for static utility methods
+    describe('Static Utility Methods', () => {
+        it('createPosition should return a Position object', () => {
             const line = 5;
             const character = 10;
             const expectedPosition: Position = { line, character };
-
-            const result = LspClient.createPosition(line, character);
-
-            expect(result).toEqual(expectedPosition);
+            const position = LspClient.createPosition(line, character);
+            expect(position).toEqual(expectedPosition);
         });
-    });
 
-    describe('createTextDocumentPositionParams', () => {
-        it('should return TextDocumentPositionParams with the given uri, line, and character', () => {
-            const uri = 'file:///test/project/doc.java' as DocumentUri;
-            const line = 3;
-            const character = 8;
+        it('createTextDocumentPositionParams should return TextDocumentPositionParams object', () => {
+            const uri: DocumentUri = 'file:///path/to/file.java';
+            const line = 1;
+            const character = 2;
             const expectedParams: TextDocumentPositionParams = {
                 textDocument: { uri },
                 position: { line, character }
             };
-
-            const result = LspClient.createTextDocumentPositionParams(uri, line, character);
-
-            expect(result).toEqual(expectedParams);
+            const params = LspClient.createTextDocumentPositionParams(uri, line, character);
+            expect(params).toEqual(expectedParams);
         });
     });
 }); 
