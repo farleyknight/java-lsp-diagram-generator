@@ -20,3 +20,4 @@ lcov.info
 # Dependency directories
 tests/fixtures/.jdt_ws*
 tests/fixtures/SampleJavaProject/.jdt_ws*
+tests/fixtures/.jdt_e2e_workspaces/*

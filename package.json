@@ -24,6 +24,7 @@
     "client:serve": "vue-cli-service serve",
     "client:build": "vue-cli-service build",
     "test": "jest",
+    "test:lsp": "jest tests/lsp/lsp_manager.test.ts tests/integration/lsp/LspInteraction.int.test.ts",
     "test:watch": "jest --watch",
     "test:e2e": "playwright test",
     "test:e2e:open": "playwright test --ui"

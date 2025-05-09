@@ -8,7 +8,7 @@ import { DidOpenTextDocumentParams, InitializeResult, Location, ReferenceParams,
 
 const TEST_TIMEOUT = 60000; // 60 seconds for LSP tests, adjust as needed
 
-describe.skip('LSP Interaction Tests', () => {
+describe('LSP Interaction Tests', () => {
     let lspManager: LspManager;
     let lspClient: LspClient;
     let initializeResult: InitializeResult;
@@ -121,80 +121,79 @@ describe.skip('LSP Interaction Tests', () => {
     afterAll(async () => {
         if (lspManager) {
             try {
-                await lspManager.stopServer();
-                console.log("LSP Server stopped successfully.");
+                await lspManager.stopServer(true); // Force stop
+                console.log("LSP Server stopped successfully (forced).");
             } catch (error) {
-                console.error("Error stopping LSP server:", error);
-                // console.error('LSP Manager Logs (after stop error):\n', lspManager.getLogs().join('\n'));
+                console.error("Error stopping LSP server (even with force):", error);
             }
         }
     }, TEST_TIMEOUT);
 
-    //it('should find references for HelloController.sayHello', async () => {
-    //    expect(lspClient).toBeDefined();
+    it('should find references for HelloController.sayHello', async () => {
+        expect(lspClient).toBeDefined();
 
-    //    const controllerFileName = 'HelloController.java';
-    //    const controllerPath = path.join(projectRootPath, 'src', 'main', 'java', 'com', 'example', 'sample', controllerFileName);
-    //    const controllerUri = `file://${controllerPath}`;
+        const controllerFileName = 'HelloController.java';
+        const controllerPath = path.join(projectRootPath, 'src', 'main', 'java', 'com', 'example', 'sample', controllerFileName);
+        const controllerUri = `file://${controllerPath}`;
 
-    //    let fileContent: string;
-    //    try {
-    //        fileContent = fs.readFileSync(controllerPath, 'utf-8');
-    //    } catch (e) {
-    //        console.error(`Failed to read ${controllerPath}`, e);
-    //        throw e;
-    //    }
+        let fileContent: string;
+        try {
+            fileContent = fs.readFileSync(controllerPath, 'utf-8');
+        } catch (e) {
+            console.error(`Failed to read ${controllerPath}`, e);
+            throw e;
+        }
 
-    //    const didOpenParams: DidOpenTextDocumentParams = {
-    //        textDocument: {
-    //            uri: controllerUri,
-    //            languageId: 'java',
-    //            version: 1,
-    //            text: fileContent,
-    //        },
-    //    };
-    //    lspClient.textDocumentDidOpen(didOpenParams);
-    //    console.log(`Sent textDocument/didOpen for ${controllerUri}`);
+        const didOpenParams: DidOpenTextDocumentParams = {
+            textDocument: {
+                uri: controllerUri,
+                languageId: 'java',
+                version: 1,
+                text: fileContent,
+            },
+        };
+        lspClient.textDocumentDidOpen(didOpenParams);
+        console.log(`Sent textDocument/didOpen for ${controllerUri}`);
 
-    //    // Allow time for server processing
-    //    await new Promise(resolve => setTimeout(resolve, 5000)); 
+        // Allow time for server processing
+        await new Promise(resolve => setTimeout(resolve, 5000)); 
 
-    //    const sayHelloMethodPosition = LspClient.createPosition(10, 19); // Position on "sayHello"
+        const sayHelloMethodPosition = LspClient.createPosition(10, 19); // Position on "sayHello"
 
-    //    console.log(`Requesting textDocument/references for ${controllerUri} at L${sayHelloMethodPosition.line}:C${sayHelloMethodPosition.character}`);
-    //    let referencesResult: Location[] | null = null;
-    //    const referenceParams: ReferenceParams = {
-    //        textDocument: { uri: controllerUri },
-    //        position: sayHelloMethodPosition,
-    //        context: { includeDeclaration: true } // Include the definition itself
-    //    };
+        console.log(`Requesting textDocument/references for ${controllerUri} at L${sayHelloMethodPosition.line}:C${sayHelloMethodPosition.character}`);
+        let referencesResult: Location[] | null = null;
+        const referenceParams: ReferenceParams = {
+            textDocument: { uri: controllerUri },
+            position: sayHelloMethodPosition,
+            context: { includeDeclaration: true } // Include the definition itself
+        };
 
-    //    try {
-    //        referencesResult = await lspClient.getTextDocumentReferences(referenceParams);
-    //    } catch (error) {
-    //        console.error('textDocument/references failed:', error);
-    //        console.error('LSP Manager Logs (after references error):\n', lspManager.getLogs().join('\n'));
-    //        throw error;
-    //    }
-    //    
-    //    console.log('textDocument/references result:', JSON.stringify(referencesResult, null, 2));
+        try {
+            referencesResult = await lspClient.getTextDocumentReferences(referenceParams);
+        } catch (error) {
+            console.error('textDocument/references failed:', error);
+            console.error('LSP Manager Logs (after references error):\n', lspManager.getLogs().join('\n'));
+            throw error;
+        }
+        
+        console.log('textDocument/references result:', JSON.stringify(referencesResult, null, 2));
 
-    //    // For this simple project, we expect the reference search to succeed (not throw an error)
-    //    // but likely return only the definition itself, or maybe null/empty if it excludes the definition.
-    //    expect(referencesResult).toBeDefined(); // Should not be undefined
-    //    // Depending on server behavior, it might be null or an empty array if no references found besides declaration
-    //    // Or it might return an array with one item (the declaration) because we set includeDeclaration: true
-    //    if (referencesResult !== null) {
-    //        expect(Array.isArray(referencesResult)).toBe(true);
-    //        // Check if it found at least the declaration
-    //        expect(referencesResult.length).toBeGreaterThanOrEqual(1);
-    //        if (referencesResult.length > 0) {
-    //            expect(referencesResult[0].uri).toBe(controllerUri);
-    //            // Optionally check the range for the definition
-    //        }
-    //    }
+        // For this simple project, we expect the reference search to succeed (not throw an error)
+        // but likely return only the definition itself, or maybe null/empty if it excludes the definition.
+        expect(referencesResult).toBeDefined(); // Should not be undefined
+        // Depending on server behavior, it might be null or an empty array if no references found besides declaration
+        // Or it might return an array with one item (the declaration) because we set includeDeclaration: true
+        if (referencesResult !== null) {
+            expect(Array.isArray(referencesResult)).toBe(true);
+            // Check if it found at least the declaration
+            expect(referencesResult.length).toBeGreaterThanOrEqual(1);
+            if (referencesResult.length > 0) {
+                expect(referencesResult[0].uri).toBe(controllerUri);
+                // Optionally check the range for the definition
+            }
+        }
 
-    //}, TEST_TIMEOUT);
+    }, TEST_TIMEOUT);
 
     // Dummy test to ensure the suite doesn't fail if all tests are commented out
     it('should be true', () => {

@@ -21,8 +21,9 @@ const helloControllerPath = path.resolve(sampleProjectPath, 'src/main/java/com/e
 const testLspConfig: JavaLspConfig = {
     ...defaultLspConfig,
     lspServerInstallDir: path.resolve(process.cwd(), defaultLspConfig.lspServerInstallDir),
-    workspaceDataPath: path.resolve(sampleProjectPath, '.jdt_ws_data_e2e_semantic_tokens'),
-    logLevel: 'INFO',
+    workspaceDataPath: path.resolve(workspaceRoot, 'tests/fixtures/.jdt_e2e_workspaces/rest_annotation_discovery_semantic_tokens'),
+    logLevel: 'DEBUG',
+    serverArgs: [...(defaultLspConfig.serverArgs || []), '-Dorg.eclipse.jdt.ls.debug=true'],
 };
 
 // Helper interface for decoded tokens
@@ -34,7 +35,7 @@ interface DecodedSemanticToken {
     tokenModifiers: string[]; // Names from legend
 }
 
-describe.skip('E2E REST Annotation Discovery via Semantic Tokens', () => {
+describe('E2E REST Annotation Discovery via Semantic Tokens', () => {
     let lspManager: LspManager;
     let lspClient: LspClient;
     let isLspInitialized = false;
@@ -171,89 +172,114 @@ describe.skip('E2E REST Annotation Discovery via Semantic Tokens', () => {
         return tokens;
     }
 
-    //it('should discover @RestController and @GetMapping annotations via semantic tokens', async () => {
-    //    if (!isLspInitialized || !semanticTokensLegend) {
-    //        console.error('LSP not initialized or legend missing, skipping semantic tokens test.');
-    //        throw new Error('LSP not initialized or legend missing, skipping semantic tokens test.');
-    //    }
+    it('should discover @RestController, @GetMapping, and @PostMapping annotations via semantic tokens', async () => {
+        // Ensure a clean workspace data path for this specific test run
+        if (fs.existsSync(testLspConfig.workspaceDataPath!)) {
+            console.log(`[Test-specific cleanup] Cleaning up old workspace data path: ${testLspConfig.workspaceDataPath}`);
+            fs.rmSync(testLspConfig.workspaceDataPath!, { recursive: true, force: true });
+        }
 
-    //    const documentUri = URI.file(helloControllerPath).toString() as DocumentUri;
-    //    const documentContent = fs.readFileSync(helloControllerPath, 'utf-8');
-    //    // Log document content to verify
-    //    console.log("--- Document Content Start ---");
-    //    console.log(documentContent);
-    //    console.log("--- Document Content End ---");
+        if (!isLspInitialized || !semanticTokensLegend) {
+            console.error('LSP not initialized or legend missing, skipping semantic tokens test.');
+            throw new Error('LSP not initialized or legend missing, skipping semantic tokens test.');
+        }
 
-    //    const didOpenParams: DidOpenTextDocumentParams = {
-    //        textDocument: {
-    //            uri: documentUri,
-    //            languageId: 'java',
-    //            version: 1,
-    //            text: documentContent,
-    //        },
-    //    };
-    //    lspClient.textDocumentDidOpen(didOpenParams);
-    //    
-    //    await new Promise(resolve => setTimeout(resolve, 5000)); // Time for server to process
+        const documentUri = URI.file(helloControllerPath).toString() as DocumentUri;
+        const documentContent = fs.readFileSync(helloControllerPath, 'utf-8');
+        // Log document content to verify
+        console.log("--- Document Content Start ---");
+        console.log(documentContent);
+        console.log("--- Document Content End ---");
 
-    //    const semanticTokensParams: SemanticTokensParams = {
-    //        textDocument: { uri: documentUri }
-    //    };
-    //    
-    //    let tokensResult: SemanticTokens | null = null;
-    //    try {
-    //        console.log(`Requesting semantic tokens for ${documentUri}`);
-    //        tokensResult = await lspClient.getSemanticTokensFull(semanticTokensParams);
-    //    } catch (e) {
-    //        console.error('Error getting semantic tokens:', e);
-    //        const logs = lspManager.getLogs ? lspManager.getLogs() : [];
-    //        console.error('LSP Logs (semantic tokens error):', logs.join('\n'));
-    //        throw e;
-    //    }
+        const didOpenParams: DidOpenTextDocumentParams = {
+            textDocument: {
+                uri: documentUri,
+                languageId: 'java',
+                version: 1,
+                text: documentContent,
+            },
+        };
+        lspClient.textDocumentDidOpen(didOpenParams);
+        
+        await new Promise(resolve => setTimeout(resolve, 5000)); // Time for server to process
 
-    //    // console.log('Received raw tokens result:', JSON.stringify(tokensResult, null, 2));
-    //    expect(tokensResult).toBeDefined();
-    //    expect(tokensResult).not.toBeNull();
-    //    if (!tokensResult) throw new Error('Semantic tokens result is null');
-    //    expect(tokensResult.data).toBeDefined();
-    //    expect(Array.isArray(tokensResult.data)).toBe(true);
+        const semanticTokensParams: SemanticTokensParams = {
+            textDocument: { uri: documentUri }
+        };
+        
+        let tokensResult: SemanticTokens | null = null;
+        try {
+            console.log(`Requesting semantic tokens for ${documentUri}`);
+            tokensResult = await lspClient.getSemanticTokensFull(semanticTokensParams);
+        } catch (e) {
+            console.error('Error getting semantic tokens:', e);
+            const logs = lspManager.getLogs ? lspManager.getLogs() : [];
+            console.error('LSP Logs (semantic tokens error):', logs.join('\n'));
+            throw e;
+        }
 
-    //    const decodedTokens = decodeSemanticTokens(tokensResult.data, semanticTokensLegend);
-    //    // For debugging:
-    //    // console.log('Decoded Tokens:', JSON.stringify(decodedTokens, null, 2)); // Log ALL decoded tokens
+        // console.log('Received raw tokens result:', JSON.stringify(tokensResult, null, 2));
+        expect(tokensResult).toBeDefined();
+        expect(tokensResult).not.toBeNull();
+        if (!tokensResult) throw new Error('Semantic tokens result is null');
+        expect(tokensResult.data).toBeDefined();
+        expect(Array.isArray(tokensResult.data)).toBe(true);
 
-    //    // Find the tokens corresponding to the annotations
-    //    // @RestController is on line 6 (0-indexed)
-    //    // @GetMapping is on line 9 (0-indexed)
-    //    // Simplify the check to focus only on position, length, and type
-    //    const restControllerToken = decodedTokens.find(token => 
-    //        token.line === 6 &&
-    //        token.startChar === 1 && // Start char of RestController
-    //        token.length === 14 && // Length of RestController
-    //        token.tokenType === 'class'
-    //    );
+        const decodedTokens = decodeSemanticTokens(tokensResult.data, semanticTokensLegend);
+        // For debugging:
+        // console.log('Decoded Tokens:', JSON.stringify(decodedTokens, null, 2)); // Log ALL decoded tokens
 
-    //    const getMappingToken = decodedTokens.find(token => 
-    //        token.line === 9 && 
-    //        token.startChar === 5 && // Start char of GetMapping
-    //        token.length === 10 && // Length of GetMapping
-    //        token.tokenType === 'class'
-    //    );
+        // Print all captured LSP logs (including JDT LS debug stderr)
+        if (lspManager.getLogs) {
+            console.log("--- Captured LSP Server Logs (stdout/stderr) ---");
+            lspManager.getLogs().forEach(log => console.log(log));
+            console.log("--- End of Captured LSP Server Logs ---");
+        }
 
-    //    // Log details for debugging if needed
-    //    if (!restControllerToken) {
-    //        console.log('RestController token not found. Tokens on line 6:', JSON.stringify(decodedTokens.filter(t => t.line === 6), null, 2));
-    //    }
-    //    if (!getMappingToken) {
-    //        console.log('GetMapping token not found. Tokens on line 9:', JSON.stringify(decodedTokens.filter(t => t.line === 9), null, 2));
-    //    }
+        // Find the tokens corresponding to the annotations
+        // @RestController is on line 6 (0-indexed)
+        // @GetMapping is on line 9 (0-indexed)
+        // @PostMapping is on line 15 (0-indexed)
+        // Simplify the check to focus only on position, length, and type
+        const restControllerToken = decodedTokens.find(token => 
+            token.line === 6 &&
+            token.startChar === 1 && // Start char of RestController
+            token.length === 14 && // Length of RestController
+            token.tokenType === 'class'
+        );
 
-    //    expect(restControllerToken).toBeDefined();
-    //    expect(getMappingToken).toBeDefined();
-    //});
+        const getMappingToken = decodedTokens.find(token => 
+            token.line === 9 && 
+            token.startChar === 5 && // Start char of GetMapping
+            token.length === 10 && // Length of GetMapping
+            token.tokenType === 'class'
+        );
+
+        const postMappingToken = decodedTokens.find(token =>
+            token.line === 15 &&
+            token.startChar === 5 && // Start char of PostMapping
+            token.length === 11 && // Length of PostMapping
+            token.tokenType === 'class' // Assuming PostMapping is also treated as 'class' by the LSP for annotations
+        );
+
+        // Log details for debugging if needed
+        if (!restControllerToken) {
+            console.log('RestController token not found. Tokens on line 6:', JSON.stringify(decodedTokens.filter(t => t.line === 6), null, 2));
+        }
+        if (!getMappingToken) {
+            console.log('GetMapping token not found. Tokens on line 9:', JSON.stringify(decodedTokens.filter(t => t.line === 9), null, 2));
+        }
+        if (!postMappingToken) {
+            console.log('PostMapping token not found. Tokens on line 15:', JSON.stringify(decodedTokens.filter(t => t.line === 15), null, 2));
+        }
+
+        expect(restControllerToken).toBeDefined();
+        expect(getMappingToken).toBeDefined();
+        expect(postMappingToken).toBeDefined();
+    });
 
     // Dummy test to ensure the suite doesn't fail if all tests are commented out
-    it('should be true', () => {
-        expect(true).toBe(true);
-    });
+    //it('should be true', () => {
+    //    expect(true).toBe(true);
+    //});
 }); 
